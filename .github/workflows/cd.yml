@@ -32,6 +32,7 @@ jobs:
       BUILDCACHE_DEBUG: -1
       BUILDCACHE_LOG_FILE: ""
       LIBXML2_VERSION: 2.9.10
+      SYMENGINE_VERSION: 0.14.0
       ZLIB_VERSION: 1.2.12
     steps:
       - name: Install CMake and Ninja
@@ -58,6 +59,20 @@ jobs:
           cmake --build build
           cmake --install build
           tar -czf ../zlib-${{ matrix.name }}.tar.gz zlib-install
+      - name: Build SymEngine
+        run: |
+          git clone -b v${{ env.SYMENGINE_VERSION }} --depth 1 https://github.com/symengine/symengine.git
+          cd symengine
+          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=symengine-install \
+            -DWITH_GMP=ON \
+            -DWITH_MPFR=ON \
+            -DWITH_MPC=ON \
+            -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }}
+          cmake --build build
+          cmake --install build
+          tar -czf ../symengine-${{ matrix.name }}.tar.gz symengine-install
       - name: Build libxml2
         run: |
           git clone -b v${{ env.LIBXML2_VERSION }} --depth 1 https://github.com/cmlibs-dependencies/libxml2.git
@@ -78,7 +93,7 @@ jobs:
           cmake --build build
           cmake --install build
           tar -czf ../libxml2-${{ matrix.name }}.tar.gz libxml2-install
-      - name: Release libxml2 and zlib
+      - name: Release libxml2, SymEngine, and zlib
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ github.workspace }}/*.tar.gz
