@@ -16,6 +16,12 @@ jobs:
           - name: 'Windows'
             os: windows-latest
             build_shared_libs: 'ON'
+          - name: 'Linux'
+            os: ubuntu-latest
+            build_shared_libs: 'ON'
+          - name: 'macOS'
+            os: macos-latest
+            build_shared_libs: 'ON'
           - name: 'WASM'
             os: macos-latest
             emcmake: 'emcmake'
