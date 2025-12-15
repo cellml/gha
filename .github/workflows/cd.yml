@@ -34,10 +34,10 @@ jobs:
         uses: opencor/buildcache-action@v1
         with:
           cache_key: ${{ matrix.name }}
-      - name: Configure MSVC
+      - name: Configure MSVC (Windows)
         if: ${{ runner.os == 'Windows' }}
         uses: ilammy/msvc-dev-cmd@v1
-      - name: Install Emscripten
+      - name: Install Emscripten (macOS)
         if: ${{ runner.os == 'macOS' }}
         run: |
           brew install --overwrite emscripten
