@@ -51,6 +51,7 @@ jobs:
         run: |
           git clone -b v${{ env.ZLIB_VERSION }} --depth 1 https://github.com/cmlibs-dependencies/zlib.git
           cd zlib
+          python3 -c "with open('zutil.h') as f: content = f.read(); open('zutil.h', 'w').write('\n'.join(line for line in content.split('\n') if 'define fdopen(fd,mode) NULL' not in line))"
           ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=zlib -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }}
           cmake --build build
           cmake --install build
