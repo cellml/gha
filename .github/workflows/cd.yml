@@ -16,17 +16,22 @@ jobs:
           - name: 'Windows'
             os: windows-latest
             build_shared_libs: 'ON'
+            gmp_args: '-DGMP_INCLUDE_DIR=$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-release/include -DGMP_LIBRARY=$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-release/lib/gmp.lib'
           - name: 'Linux'
             os: ubuntu-latest
             build_shared_libs: 'ON'
+            gmp_args: '-DGMP_INCLUDE_DIR=$RUNNER_TEMP/gmp/include -DGMP_LIBRARY=$RUNNER_TEMP/gmp/lib/libgmp.a'
           - name: 'macOS'
             os: macos-latest
             build_shared_libs: 'ON'
+            gmp_args: '-DGMP_INCLUDE_DIR=$RUNNER_TEMP/gmp/include -DGMP_LIBRARY=$RUNNER_TEMP/gmp/lib/libgmp.a'
           - name: 'WASM'
             os: macos-latest
+            emconfigure: 'emconfigure'
             emcmake: 'emcmake'
+            emmake: 'emmake'
             build_shared_libs: 'OFF'
-            extra_cmake_args: '-DGMP_INCLUDE_DIR=$HOME/usr/include -DGMP_LIBRARY=$HOME/usr/lib/libgmp.a'
+            gmp_args: '-DGMP_INCLUDE_DIR=$RUNNER_TEMP/gmp/include -DGMP_LIBRARY=$RUNNER_TEMP/gmp/lib/libgmp.a'
     env:
       BUILDCACHE_ACCURACY: STRICT
       BUILDCACHE_COMPRESS_FORMAT: ZSTD
@@ -51,60 +56,55 @@ jobs:
         run: |
           brew update
           brew install --overwrite emscripten
-      - name: Install GMP (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        uses: johnwason/vcpkg-action@v7
-        id: vcpkg
-        with:
-          pkgs: gmp
-          triplet: x64-windows-release
-          token: ${{ github.token }}
-      - name: Install GMP (Linux)
-        if: ${{ runner.os == 'Linux' }}
-        run: |
-          sudo apt update
-          sudo apt install -y libgmp-dev
-      - name: Install GMP (macOS)
-        if: ${{ runner.os == 'macOS' && matrix.name != 'WASM' }}
-        run: |
-          brew update
-          brew install gmp
-      - name: Build and install GMP (WASM)
-        if: ${{ matrix.name == 'WASM' }}
-        run: |
-          curl -Lo gmp.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-${{ env.GMP_VERSION }}.tar.xz
-          tar -xf gmp.tar.xz
-          cd gmp-${{ env.GMP_VERSION }}
-          emconfigure ./configure --prefix=$HOME/usr --enable-cxx --disable-shared --disable-assembly HOST_CC=clang
-          emmake make -j$(sysctl -n hw.ncpu)
-          emmake make install
-      - name: Build zlib
+      - name: Build and archive zlib
         run: |
           git clone -b v${{ env.ZLIB_VERSION }} --depth 1 https://github.com/cmlibs-dependencies/zlib.git
           cd zlib
           python3 -c "with open('zutil.h') as f: content = f.read(); open('zutil.h', 'w').write('\n'.join(line for line in content.split('\n') if 'define fdopen(fd,mode) NULL' not in line))"
-          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=___install___/zlib -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }}
+          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/zlib -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }}
           cmake --build build
           cmake --install build
-          tar -czf ../zlib-${{ matrix.name }}.tar.gz -C ___install___ zlib
-      - name: Build SymEngine
-        run: |
-          git clone -b v${{ env.SYMENGINE_VERSION }} --depth 1 https://github.com/symengine/symengine.git
-          cd symengine
-          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build ${{ runner.os == 'Windows' && steps.vcpkg.outputs.vcpkg-cmake-config || '' }} -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=___install___/symengine -DBUILD_BENCHMARKS=OFF -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DWITH_SYMENGINE_THREAD_SAFE=OFF ${{ matrix.extra_cmake_args }}
-          cmake --build build
-          cmake --install build
-          tar -czf ../symengine-${{ matrix.name }}.tar.gz -C ___install___ symengine
-      - name: Build libxml2
+          tar -czf ${{ runner.temp }}/zlib-${{ matrix.name }}.tar.gz -C ${{ runner.temp }} zlib
+      - name: Build and archive libxml2
         run: |
           git clone -b v${{ env.LIBXML2_VERSION }} --depth 1 https://github.com/cmlibs-dependencies/libxml2.git
           cd libxml2
-          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=___install___/libxml2 -DZLIB_DIR=${{ github.workspace }}/zlib/___install___/zlib/lib/cmake/ZLIB-${{ env.ZLIB_VERSION }} -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DLIBXML2_WITH_DEBUG=OFF -DLIBXML2_WITH_ICONV=OFF -DLIBXML2_WITH_LEGACY=OFF -DLIBXML2_WITH_LZMA=OFF -DLIBXML2_WITH_MODULES=OFF -DLIBXML2_WITH_PROGRAMS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_TESTS=OFF
+          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/libxml2 -DZLIB_DIR=${{ runner.temp }}/zlib/lib/cmake/ZLIB-${{ env.ZLIB_VERSION }} -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DLIBXML2_WITH_DEBUG=OFF -DLIBXML2_WITH_ICONV=OFF -DLIBXML2_WITH_LEGACY=OFF -DLIBXML2_WITH_LZMA=OFF -DLIBXML2_WITH_MODULES=OFF -DLIBXML2_WITH_PROGRAMS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_TESTS=OFF
           cmake --build build
           cmake --install build
-          tar -czf ../libxml2-${{ matrix.name }}.tar.gz -C ___install___ libxml2
-      - name: Release libxml2, SymEngine, and zlib
+          tar -czf ${{ runner.temp }}/libxml2-${{ matrix.name }}.tar.gz -C ${{ runner.temp }} libxml2
+      - name: Build and archive GMP (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: |
+          $VCPKG_INSTALLATION_ROOT/vcpkg install gmp:x64-windows-release
+          RUNNER_TEMP_UNIX=$(echo "${{ runner.temp }}" | sed 's|C:|/c|' | sed 's|D:|/d|' | sed 's|\\|/|g')
+          tar -czf $RUNNER_TEMP_UNIX/gmp-${{ matrix.name }}.tar.gz -C $VCPKG_INSTALLATION_ROOT/installed/x64-windows .
+      - name: Build and archive GMP (Linux/macOS/WASM)
+        if: ${{ runner.os != 'Windows' }}
+        run: |
+          curl -Lo gmp.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-${{ env.GMP_VERSION }}.tar.xz
+          tar -xf gmp.tar.xz
+          cd gmp-${{ env.GMP_VERSION }}
+          ${{ matrix.emconfigure }} ./configure --prefix=${{ runner.temp }}/gmp --enable-cxx --disable-shared --disable-assembly HOST_CC=clang CFLAGS=-fPIC
+          ${{ matrix.emmake }} make -j$(sysctl -n hw.ncpu)
+          ${{ matrix.emmake }} make install
+          tar -czf ${{ runner.temp }}/gmp-${{ matrix.name }}.tar.gz -C ${{ runner.temp }} gmp
+      - name: Build and archive SymEngine
+        run: |
+          git clone -b v${{ env.SYMENGINE_VERSION }} --depth 1 https://github.com/symengine/symengine.git
+          cd symengine
+          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine -DBUILD_BENCHMARKS=OFF -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} ${{ matrix.gmp_args }} -DWITH_SYMENGINE_THREAD_SAFE=OFF
+          cmake --build build
+          cmake --install build
+          tar -czf ${{ runner.temp }}/symengine-${{ matrix.name }}.tar.gz -C ${{ runner.temp }} symengine
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ runner.temp }}/*.tar.gz
+      - name: Release zlib, libxml2, GMP, and SymEngine
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ github.workspace }}/*.tar.gz
+          files: ${{ runner.temp }}/*.tar.gz
           tag_name: gha
