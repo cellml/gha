@@ -16,16 +16,25 @@ jobs:
           - name: 'Windows'
             os: windows-latest
             build_shared_libs: 'ON'
+          - name: 'Linux'
+            os: ubuntu-latest
+            build_shared_libs: 'ON'
+          - name: 'macOS'
+            os: macos-latest
+            build_shared_libs: 'ON'
           - name: 'WASM'
             os: macos-latest
             emcmake: 'emcmake'
             build_shared_libs: 'OFF'
+            extra_cmake_args: '-DGMP_INCLUDE_DIR=$HOME/usr/include -DGMP_LIBRARY=$HOME/usr/lib/libgmp.a'
     env:
       BUILDCACHE_ACCURACY: STRICT
       BUILDCACHE_COMPRESS_FORMAT: ZSTD
       BUILDCACHE_DEBUG: -1
       BUILDCACHE_LOG_FILE: ""
+      GMP_VERSION: 6.3.0
       LIBXML2_VERSION: 2.9.10
+      SYMENGINE_VERSION: 0.14.0
       ZLIB_VERSION: 1.2.12
     steps:
       - name: Install CMake and Ninja
@@ -34,21 +43,58 @@ jobs:
         uses: opencor/buildcache-action@v1
         with:
           cache_key: ${{ matrix.name }}
-      - name: Configure MSVC
+      - name: Configure MSVC (Windows)
         if: ${{ runner.os == 'Windows' }}
         uses: ilammy/msvc-dev-cmd@v1
-      - name: Install Emscripten
-        if: ${{ runner.os == 'macOS' }}
+      - name: Install Emscripten (WASM)
+        if: ${{ matrix.name == 'WASM' }}
         run: |
+          brew update
           brew install --overwrite emscripten
+      - name: Install GMP (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        uses: johnwason/vcpkg-action@v7
+        id: vcpkg
+        with:
+          pkgs: gmp
+          triplet: x64-windows-release
+          token: ${{ github.token }}
+      - name: Install GMP (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          sudo apt update
+          sudo apt install -y libgmp-dev
+      - name: Install GMP (macOS)
+        if: ${{ runner.os == 'macOS' && matrix.name != 'WASM' }}
+        run: |
+          brew update
+          brew install gmp
+      - name: Build and install GMP (WASM)
+        if: ${{ matrix.name == 'WASM' }}
+        run: |
+          curl -Lo gmp.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-${{ env.GMP_VERSION }}.tar.xz
+          tar -xf gmp.tar.xz
+          cd gmp-${{ env.GMP_VERSION }}
+          emconfigure ./configure --prefix=$HOME/usr --enable-cxx --disable-shared --disable-assembly HOST_CC=clang
+          emmake make -j$(sysctl -n hw.ncpu)
+          emmake make install
       - name: Build zlib
         run: |
           git clone -b v${{ env.ZLIB_VERSION }} --depth 1 https://github.com/cmlibs-dependencies/zlib.git
           cd zlib
+          python3 -c "with open('zutil.h') as f: content = f.read(); open('zutil.h', 'w').write('\n'.join(line for line in content.split('\n') if 'define fdopen(fd,mode) NULL' not in line))"
           ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=zlib -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }}
           cmake --build build
           cmake --install build
           tar -czf ../zlib-${{ matrix.name }}.tar.gz zlib
+      - name: Build SymEngine
+        run: |
+          git clone -b v${{ env.SYMENGINE_VERSION }} --depth 1 https://github.com/symengine/symengine.git
+          cd symengine
+          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build ${{ runner.os == 'Windows' && steps.vcpkg.outputs.vcpkg-cmake-config || '' }} -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=symengine -DBUILD_BENCHMARKS=OFF -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DWITH_SYMENGINE_THREAD_SAFE=OFF ${{ matrix.extra_cmake_args }}
+          cmake --build build
+          cmake --install build
+          tar -czf ../symengine-${{ matrix.name }}.tar.gz symengine
       - name: Build libxml2
         run: |
           git clone -b v${{ env.LIBXML2_VERSION }} --depth 1 https://github.com/cmlibs-dependencies/libxml2.git
@@ -57,7 +103,7 @@ jobs:
           cmake --build build
           cmake --install build
           tar -czf ../libxml2-${{ matrix.name }}.tar.gz libxml2
-      - name: Release libxml2 and zlib
+      - name: Release libxml2, SymEngine, and zlib
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ github.workspace }}/*.tar.gz
