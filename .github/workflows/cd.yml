@@ -2,7 +2,7 @@ name: Library Cache Builder
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, symengine ]
   workflow_dispatch:
 
 jobs:
@@ -75,11 +75,9 @@ jobs:
           tar -czf ${{ runner.temp }}/libxml2-${{ matrix.name }}.tar.gz -C ${{ runner.temp }} libxml2
       - name: Build and archive GMP (Windows)
         if: ${{ runner.os == 'Windows' }}
-        shell: bash
         run: |
-          $VCPKG_INSTALLATION_ROOT/vcpkg install gmp:x64-windows-release
-          RUNNER_TEMP_UNIX=$(echo "${{ runner.temp }}" | sed 's|C:|/c|' | sed 's|D:|/d|' | sed 's|\\|/|g')
-          tar -czf $RUNNER_TEMP_UNIX/gmp-${{ matrix.name }}.tar.gz -C $VCPKG_INSTALLATION_ROOT/installed/x64-windows .
+          & $env:VCPKG_INSTALLATION_ROOT/vcpkg install gmp:x64-windows-release
+          tar -czf $env:RUNNER_TEMP/gmp-${{ matrix.name }}.tar.gz -C $env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-release .
       - name: Build and archive GMP (Linux/macOS/WASM)
         if: ${{ runner.os != 'Windows' }}
         run: |
@@ -87,7 +85,7 @@ jobs:
           tar -xf gmp.tar.xz
           cd gmp-${{ env.GMP_VERSION }}
           ${{ matrix.emconfigure }} ./configure --prefix=${{ runner.temp }}/gmp --enable-cxx --disable-shared --disable-assembly HOST_CC=clang CFLAGS=-fPIC
-          ${{ matrix.emmake }} make -j$(sysctl -n hw.ncpu)
+          ${{ matrix.emmake }} make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
           ${{ matrix.emmake }} make install
           tar -czf ${{ runner.temp }}/gmp-${{ matrix.name }}.tar.gz -C ${{ runner.temp }} gmp
       - name: Build and archive SymEngine
