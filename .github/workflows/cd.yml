@@ -95,7 +95,24 @@ jobs:
           ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine -DBUILD_BENCHMARKS=OFF -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} ${{ matrix.gmp_args }} -DWITH_SYMENGINE_THREAD_SAFE=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
           cmake --build build
           cmake --install build
-          tar -czf ${{ runner.temp }}/symengine-${{ matrix.name }}.tar.gz -C ${{ runner.temp }} symengine
+      - name: Patch SymEngine (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: |
+          sed -i 's|set(SYMENGINE_GMP_LIBRARIES C:/vcpkg/installed/x64-windows-release/lib/gmp.lib)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../gmp/lib/gmp.lib)|' $RUNNER_TEMP/symengine/CMake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_GMP_INCLUDE_DIRS C:/vcpkg/installed/x64-windows-release/include)|set(SYMENGINE_GMP_INCLUDE_DIRS ${SYMENGINE_CMAKE_DIR}/../../gmp/include)|' $RUNNER_TEMP/symengine/CMake/SymEngineConfig.cmake
+      - name: Patch SymEngine (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          sed -i 's|set(SYMENGINE_GMP_LIBRARIES /home/runner/work/_temp/gmp/lib/libgmp.a)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../../../gmp/lib/libgmp.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_GMP_INCLUDE_DIRS /home/runner/work/_temp/gmp/include)|set(SYMENGINE_GMP_INCLUDE_DIRS ${SYMENGINE_CMAKE_DIR}/../../../../gmp/include)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+      - name: Patch SymEngine (macOS)
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          sed -i '' 's|set(SYMENGINE_GMP_LIBRARIES /Users/runner/work/_temp/gmp/lib/libgmp.a)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../../../gmp/lib/libgmp.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i '' 's|set(SYMENGINE_GMP_INCLUDE_DIRS /Users/runner/work/_temp/gmp/include)|set(SYMENGINE_GMP_INCLUDE_DIRS ${SYMENGINE_CMAKE_DIR}/../../../../gmp/include)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+      - name: Archive SymEngine
+        run: tar -czf ${{ runner.temp }}/symengine-${{ matrix.name }}.tar.gz -C ${{ runner.temp }} symengine
       - name: Release zlib, libxml2, GMP, and SymEngine
         uses: softprops/action-gh-release@v2
         with:
