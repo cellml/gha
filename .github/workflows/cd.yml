@@ -61,7 +61,7 @@ jobs:
           git clone -b v${{ env.ZLIB_VERSION }} --depth 1 https://github.com/cmlibs-dependencies/zlib.git
           cd zlib
           python3 -c "with open('zutil.h') as f: content = f.read(); open('zutil.h', 'w').write('\n'.join(line for line in content.split('\n') if 'define fdopen(fd,mode) NULL' not in line))"
-          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/zlib -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }}
+          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/zlib -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
           cmake --build build
           cmake --install build
           tar -czf ${{ runner.temp }}/zlib-${{ matrix.name }}.tar.gz -C ${{ runner.temp }} zlib
@@ -69,7 +69,7 @@ jobs:
         run: |
           git clone -b v${{ env.LIBXML2_VERSION }} --depth 1 https://github.com/cmlibs-dependencies/libxml2.git
           cd libxml2
-          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/libxml2 -DZLIB_DIR=${{ runner.temp }}/zlib/lib/cmake/ZLIB-${{ env.ZLIB_VERSION }} -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DLIBXML2_WITH_DEBUG=OFF -DLIBXML2_WITH_ICONV=OFF -DLIBXML2_WITH_LEGACY=OFF -DLIBXML2_WITH_LZMA=OFF -DLIBXML2_WITH_MODULES=OFF -DLIBXML2_WITH_PROGRAMS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_TESTS=OFF
+          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/libxml2 -DZLIB_DIR=${{ runner.temp }}/zlib/lib/cmake/ZLIB-${{ env.ZLIB_VERSION }} -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DLIBXML2_WITH_DEBUG=OFF -DLIBXML2_WITH_ICONV=OFF -DLIBXML2_WITH_LEGACY=OFF -DLIBXML2_WITH_LZMA=OFF -DLIBXML2_WITH_MODULES=OFF -DLIBXML2_WITH_PROGRAMS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_TESTS=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
           cmake --build build
           cmake --install build
           tar -czf ${{ runner.temp }}/libxml2-${{ matrix.name }}.tar.gz -C ${{ runner.temp }} libxml2
@@ -92,7 +92,7 @@ jobs:
         run: |
           git clone -b v${{ env.SYMENGINE_VERSION }} --depth 1 https://github.com/symengine/symengine.git
           cd symengine
-          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine -DBUILD_BENCHMARKS=OFF -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} ${{ matrix.gmp_args }} -DWITH_SYMENGINE_THREAD_SAFE=OFF
+          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine -DBUILD_BENCHMARKS=OFF -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} ${{ matrix.gmp_args }} -DWITH_SYMENGINE_THREAD_SAFE=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
           cmake --build build
           cmake --install build
           tar -czf ${{ runner.temp }}/symengine-${{ matrix.name }}.tar.gz -C ${{ runner.temp }} symengine
