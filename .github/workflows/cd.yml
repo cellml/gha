@@ -16,7 +16,7 @@ jobs:
           - name: 'Windows'
             os: windows-latest
             build_shared_libs: 'ON'
-            gmp_args: '-DGMP_INCLUDE_DIR=$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-release/include -DGMP_LIBRARY=$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-release/lib/gmp.lib'
+            gmp_args: '-DGMP_INCLUDE_DIR=C:\vcpkg\installed\x64-windows-release/include -DGMP_LIBRARY=C:\vcpkg\installed\x64-windows-release/lib/gmp.lib'
             archive_name: 'Windows'
           - name: 'Linux'
             os: ubuntu-latest
@@ -85,8 +85,8 @@ jobs:
       - name: Build and archive GMP (Windows)
         if: ${{ runner.os == 'Windows' }}
         run: |
-          & $env:VCPKG_INSTALLATION_ROOT/vcpkg install gmp:x64-windows-release
-          tar -czf $env:RUNNER_TEMP/gmp-${{ matrix.archive_name }}.tar.gz -C $env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-release .
+          & C:\vcpkg\vcpkg install gmp:x64-windows-release
+          tar -czf $env:RUNNER_TEMP/gmp-${{ matrix.archive_name }}.tar.gz -C C:\vcpkg\installed\x64-windows-release .
       - name: Build and archive GMP (Linux/macOS/WASM)
         if: ${{ runner.os != 'Windows' }}
         run: |
