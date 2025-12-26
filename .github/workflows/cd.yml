@@ -16,22 +16,18 @@ jobs:
           - name: 'Windows'
             os: windows-latest
             build_shared_libs: 'ON'
-            gmp_args: '-DGMP_INCLUDE_DIR=C:\vcpkg\installed\x64-windows-release/gmp/include -DGMP_LIBRARY=C:\vcpkg\installed\x64-windows-release/gmp/lib/gmp.lib'
             archive_name: 'Windows'
           - name: 'Linux'
             os: ubuntu-latest
             build_shared_libs: 'ON'
-            gmp_args: '-DGMP_INCLUDE_DIR=$RUNNER_TEMP/gmp/include -DGMP_LIBRARY=$RUNNER_TEMP/gmp/lib/libgmp.a'
             archive_name: 'Linux'
           - name: 'macOS (Intel)'
             os: macos-15-intel
             build_shared_libs: 'ON'
-            gmp_args: '-DGMP_INCLUDE_DIR=$RUNNER_TEMP/gmp/include -DGMP_LIBRARY=$RUNNER_TEMP/gmp/lib/libgmp.a'
             archive_name: 'macOS-Intel'
           - name: 'macOS (ARM)'
             os: macos-latest
             build_shared_libs: 'ON'
-            gmp_args: '-DGMP_INCLUDE_DIR=$RUNNER_TEMP/gmp/include -DGMP_LIBRARY=$RUNNER_TEMP/gmp/lib/libgmp.a'
             archive_name: 'macOS-ARM'
           - name: 'WASM'
             os: macos-latest
@@ -39,7 +35,6 @@ jobs:
             emcmake: 'emcmake'
             emmake: 'emmake'
             build_shared_libs: 'OFF'
-            gmp_args: '-DGMP_INCLUDE_DIR=$RUNNER_TEMP/gmp/include -DGMP_LIBRARY=$RUNNER_TEMP/gmp/lib/libgmp.a'
             archive_name: 'WASM'
     env:
       BUILDCACHE_ACCURACY: STRICT
@@ -60,6 +55,11 @@ jobs:
       - name: Configure MSVC (Windows)
         if: ${{ runner.os == 'Windows' }}
         uses: ilammy/msvc-dev-cmd@v1
+      - name: Install Conan (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        uses: conan-io/setup-conan@v1
+        with:
+          cache_packages: true
       - name: Install Emscripten (WASM)
         if: ${{ matrix.name == 'WASM' }}
         run: |
@@ -82,17 +82,6 @@ jobs:
           cmake --build build
           cmake --install build
           tar -czf ${{ runner.temp }}/libxml2-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} libxml2
-      - name: Build and archive GMP (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        run: |
-          & C:\vcpkg\vcpkg install gmp:x64-windows-release
-          cd C:\vcpkg\installed\x64-windows-release
-          New-Item -Path gmp -ItemType Directory | Out-Null
-          Move-Item -Path bin -Destination gmp
-          Move-Item -Path include -Destination gmp
-          Move-Item -Path lib -Destination gmp
-          Move-Item -Path share -Destination gmp
-          tar -czf $env:RUNNER_TEMP/gmp-${{ matrix.archive_name }}.tar.gz gmp
       - name: Build and archive GMP (Linux/macOS/WASM)
         if: ${{ runner.os != 'Windows' }}
         run: |
@@ -103,30 +92,50 @@ jobs:
           ${{ matrix.emmake }} make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
           ${{ matrix.emmake }} make install
           tar -czf ${{ runner.temp }}/gmp-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} gmp
-      - name: Build and archive SymEngine
+      - name: Build and archive SymEngine (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        run: |
+          conan profile detect --force
+          conan install --requires=gmp/${{ env.GMP_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --output-folder="$env:RUNNER_TEMP\gmp_cmake" -g CMakeDeps
+          conan install --requires=symengine/${{ env.SYMENGINE_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --output-folder="$env:RUNNER_TEMP\symengine_cmake" -g CMakeDeps
+          conan install --requires=symengine/${{ env.SYMENGINE_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --deployer=full_deploy --deployer-folder="$env:RUNNER_TEMP\symengine_full_deploy"
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\gmp"
+          Copy-Item -Recurse -Path "$env:RUNNER_TEMP\symengine_full_deploy\full_deploy\host\gmp\${{ env.GMP_VERSION }}\Release\x86_64\include" -Destination "$env:RUNNER_TEMP\gmp\include"
+          Copy-Item -Recurse -Path "$env:RUNNER_TEMP\symengine_full_deploy\full_deploy\host\gmp\${{ env.GMP_VERSION }}\Release\x86_64\lib" -Destination "$env:RUNNER_TEMP\gmp\lib"
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\gmp\lib\cmake\gmp"
+          Copy-Item -Path "$env:RUNNER_TEMP\gmp_cmake\*.cmake" -Destination "$env:RUNNER_TEMP\gmp\lib\cmake\gmp"
+          sed -i 's|set(gmp_PACKAGE_FOLDER_RELEASE "C:/Users/runneradmin/.conan2/p/gmp772bf963b9314/p")|set(gmp_PACKAGE_FOLDER_RELEASE "${CMAKE_CURRENT_LIST_DIR}/../../..")|' ${{ runner.temp }}/gmp/lib/cmake/gmp/gmp-release-x86_64-data.cmake
+          sed -i 's|set(gmp_LIBRARIES_RELEASE gmp::gmp)|set(gmp_LIBRARIES_RELEASE ${gmp_gmp_libgmp_LIB_DIRS_RELEASE}/gmp.lib)|' ${{ runner.temp }}/gmp/lib/cmake/gmp/gmp-Target-release.cmake
+          tar -czf "$env:RUNNER_TEMP/gmp-${{ matrix.archive_name }}.tar.gz" -C "$env:RUNNER_TEMP" gmp
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\symengine"
+          Copy-Item -Recurse -Path "$env:RUNNER_TEMP\symengine_full_deploy\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\bin" -Destination "$env:RUNNER_TEMP\symengine\bin"
+          Copy-Item -Recurse -Path "$env:RUNNER_TEMP\symengine_full_deploy\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\include" -Destination "$env:RUNNER_TEMP\symengine\include"
+          Copy-Item -Recurse -Path "$env:RUNNER_TEMP\symengine_full_deploy\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\lib" -Destination "$env:RUNNER_TEMP\symengine\lib"
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\symengine\lib\cmake\symengine"
+          Copy-Item -Path "$env:RUNNER_TEMP\symengine_cmake\c*.cmake","$env:RUNNER_TEMP\symengine_cmake\symengine*.cmake" -Destination "$env:RUNNER_TEMP\symengine\lib\cmake\symengine"
+          sed -i 's|set(symengine_PACKAGE_FOLDER_RELEASE "C:/Users/runneradmin/.conan2/p/b/symene11791e52be14/p")|set(symengine_PACKAGE_FOLDER_RELEASE "${CMAKE_CURRENT_LIST_DIR}/../../..")|' ${{ runner.temp }}/symengine/lib/cmake/symengine/symengine-release-x86_64-data.cmake
+          sed -i 's|set(symengine_LIBRARIES_RELEASE symengine)|set(symengine_LIBRARIES_RELEASE ${symengine_LIB_DIRS_RELEASE}/symengine.lib)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/symengine-Target-release.cmake
+          tar -czf "$env:RUNNER_TEMP/symengine-${{ matrix.archive_name }}.tar.gz" -C "$env:RUNNER_TEMP" symengine
+      - name: Build and archive SymEngine (Linux/macOS/WASM)
+        if: ${{ runner.os != 'Windows' }}
         run: |
           git clone -b v${{ env.SYMENGINE_VERSION }} --depth 1 https://github.com/symengine/symengine.git
           cd symengine
-          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine -DBUILD_BENCHMARKS=OFF -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} ${{ matrix.gmp_args }} -DWITH_SYMENGINE_THREAD_SAFE=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine -DBUILD_BENCHMARKS=OFF -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DGMP_INCLUDE_DIR=${{ runner.temp }}/gmp/include -DGMP_LIBRARY=${{ runner.temp }}/gmp/lib/libgmp.a -DWITH_SYMENGINE_THREAD_SAFE=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
           cmake --build build
           cmake --install build
-      - name: Patch SymEngine (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        shell: bash
-        run: |
-          sed -i 's|set(SYMENGINE_GMP_LIBRARIES C:/vcpkg/installed/x64-windows-release/gmp/lib/gmp.lib)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../gmp/lib/gmp.lib)|' $RUNNER_TEMP/symengine/CMake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_GMP_INCLUDE_DIRS C:/vcpkg/installed/x64-windows-release/gmp/include)|set(SYMENGINE_GMP_INCLUDE_DIRS ${SYMENGINE_CMAKE_DIR}/../../gmp/include)|' $RUNNER_TEMP/symengine/CMake/SymEngineConfig.cmake
       - name: Patch SymEngine (Linux)
         if: ${{ runner.os == 'Linux' }}
         run: |
           sed -i 's|set(SYMENGINE_GMP_LIBRARIES /home/runner/work/_temp/gmp/lib/libgmp.a)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../../../gmp/lib/libgmp.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
           sed -i 's|set(SYMENGINE_GMP_INCLUDE_DIRS /home/runner/work/_temp/gmp/include)|set(SYMENGINE_GMP_INCLUDE_DIRS ${SYMENGINE_CMAKE_DIR}/../../../../gmp/include)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-      - name: Patch SymEngine (macOS)
+      - name: Patch SymEngine (macOS/WASM)
         if: ${{ runner.os == 'macOS' }}
         run: |
           sed -i '' 's|set(SYMENGINE_GMP_LIBRARIES /Users/runner/work/_temp/gmp/lib/libgmp.a)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../../../gmp/lib/libgmp.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
           sed -i '' 's|set(SYMENGINE_GMP_INCLUDE_DIRS /Users/runner/work/_temp/gmp/include)|set(SYMENGINE_GMP_INCLUDE_DIRS ${SYMENGINE_CMAKE_DIR}/../../../../gmp/include)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-      - name: Archive SymEngine
+      - name: Archive SymEngine (Linux/macOS/WASM)
+        if: ${{ runner.os != 'Windows' }}
         run: tar -czf ${{ runner.temp }}/symengine-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} symengine
       - name: Release zlib, libxml2, GMP, and SymEngine
         uses: softprops/action-gh-release@v2
