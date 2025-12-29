@@ -96,26 +96,26 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         run: |
           conan profile detect --force
-          conan install --requires=gmp/${{ env.GMP_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --output-folder="$env:RUNNER_TEMP\gmp_cmake" -g CMakeDeps
-          conan install --requires=symengine/${{ env.SYMENGINE_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --output-folder="$env:RUNNER_TEMP\symengine_cmake" -g CMakeDeps
-          conan install --requires=symengine/${{ env.SYMENGINE_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --deployer=full_deploy --deployer-folder="$env:RUNNER_TEMP\symengine_full_deploy"
-          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\gmp"
-          Copy-Item -Recurse -Path "$env:RUNNER_TEMP\symengine_full_deploy\full_deploy\host\gmp\${{ env.GMP_VERSION }}\Release\x86_64\include" -Destination "$env:RUNNER_TEMP\gmp\include"
-          Copy-Item -Recurse -Path "$env:RUNNER_TEMP\symengine_full_deploy\full_deploy\host\gmp\${{ env.GMP_VERSION }}\Release\x86_64\lib" -Destination "$env:RUNNER_TEMP\gmp\lib"
-          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\gmp\lib\cmake\gmp"
-          Copy-Item -Path "$env:RUNNER_TEMP\gmp_cmake\*.cmake" -Destination "$env:RUNNER_TEMP\gmp\lib\cmake\gmp"
-          sed -i 's|set(gmp_PACKAGE_FOLDER_RELEASE "C:/Users/runneradmin/.conan2/p/gmp772bf963b9314/p")|set(gmp_PACKAGE_FOLDER_RELEASE "${CMAKE_CURRENT_LIST_DIR}/../../..")|' ${{ runner.temp }}/gmp/lib/cmake/gmp/gmp-release-x86_64-data.cmake
+          conan install --requires=gmp/${{ env.GMP_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --output-folder="${{ runner.temp }}\gmp_cmake" -g CMakeDeps
+          conan install --requires=symengine/${{ env.SYMENGINE_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --output-folder="${{ runner.temp }}\symengine_cmake" -g CMakeDeps
+          conan install --requires=symengine/${{ env.SYMENGINE_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --deployer=full_deploy --deployer-folder="${{ runner.temp }}\symengine_full_deploy"
+          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\gmp"
+          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy\full_deploy\host\gmp\${{ env.GMP_VERSION }}\Release\x86_64\include" -Destination "${{ runner.temp }}\gmp\include"
+          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy\full_deploy\host\gmp\${{ env.GMP_VERSION }}\Release\x86_64\lib" -Destination "${{ runner.temp }}\gmp\lib"
+          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\gmp\lib\cmake\gmp"
+          Copy-Item -Path "${{ runner.temp }}\gmp_cmake\*.cmake" -Destination "${{ runner.temp }}\gmp\lib\cmake\gmp"
+          sed -i 's|set(gmp_PACKAGE_FOLDER_RELEASE ".*")|set(gmp_PACKAGE_FOLDER_RELEASE "${CMAKE_CURRENT_LIST_DIR}/../../..")|' ${{ runner.temp }}/gmp/lib/cmake/gmp/gmp-release-x86_64-data.cmake
           sed -i 's|set(gmp_LIBRARIES_RELEASE gmp::gmp)|set(gmp_LIBRARIES_RELEASE ${gmp_gmp_libgmp_LIB_DIRS_RELEASE}/gmp.lib)|' ${{ runner.temp }}/gmp/lib/cmake/gmp/gmp-Target-release.cmake
-          tar -czf "$env:RUNNER_TEMP/gmp-${{ matrix.archive_name }}.tar.gz" -C "$env:RUNNER_TEMP" gmp
-          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\symengine"
-          Copy-Item -Recurse -Path "$env:RUNNER_TEMP\symengine_full_deploy\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\bin" -Destination "$env:RUNNER_TEMP\symengine\bin"
-          Copy-Item -Recurse -Path "$env:RUNNER_TEMP\symengine_full_deploy\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\include" -Destination "$env:RUNNER_TEMP\symengine\include"
-          Copy-Item -Recurse -Path "$env:RUNNER_TEMP\symengine_full_deploy\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\lib" -Destination "$env:RUNNER_TEMP\symengine\lib"
-          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\symengine\lib\cmake\symengine"
-          Copy-Item -Path "$env:RUNNER_TEMP\symengine_cmake\c*.cmake","$env:RUNNER_TEMP\symengine_cmake\symengine*.cmake" -Destination "$env:RUNNER_TEMP\symengine\lib\cmake\symengine"
-          sed -i 's|set(symengine_PACKAGE_FOLDER_RELEASE "C:/Users/runneradmin/.conan2/p/b/symene11791e52be14/p")|set(symengine_PACKAGE_FOLDER_RELEASE "${CMAKE_CURRENT_LIST_DIR}/../../..")|' ${{ runner.temp }}/symengine/lib/cmake/symengine/symengine-release-x86_64-data.cmake
+          tar -czf "${{ runner.temp }}/gmp-${{ matrix.archive_name }}.tar.gz" -C "${{ runner.temp }}" gmp
+          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\symengine"
+          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\bin" -Destination "${{ runner.temp }}\symengine\bin"
+          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\include" -Destination "${{ runner.temp }}\symengine\include"
+          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\lib" -Destination "${{ runner.temp }}\symengine\lib"
+          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\symengine\lib\cmake\symengine"
+          Copy-Item -Path "${{ runner.temp }}\symengine_cmake\c*.cmake","${{ runner.temp }}\symengine_cmake\symengine*.cmake" -Destination "${{ runner.temp }}\symengine\lib\cmake\symengine"
+          sed -i 's|set(symengine_PACKAGE_FOLDER_RELEASE ".*")|set(symengine_PACKAGE_FOLDER_RELEASE "${CMAKE_CURRENT_LIST_DIR}/../../..")|' ${{ runner.temp }}/symengine/lib/cmake/symengine/symengine-release-x86_64-data.cmake
           sed -i 's|set(symengine_LIBRARIES_RELEASE symengine)|set(symengine_LIBRARIES_RELEASE ${symengine_LIB_DIRS_RELEASE}/symengine.lib)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/symengine-Target-release.cmake
-          tar -czf "$env:RUNNER_TEMP/symengine-${{ matrix.archive_name }}.tar.gz" -C "$env:RUNNER_TEMP" symengine
+          tar -czf "${{ runner.temp }}/symengine-${{ matrix.archive_name }}.tar.gz" -C "${{ runner.temp }}" symengine
       - name: Build and archive SymEngine (Linux/macOS/WASM)
         if: ${{ runner.os != 'Windows' }}
         run: |
