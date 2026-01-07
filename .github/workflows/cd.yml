@@ -188,9 +188,6 @@ jobs:
           cp -r ${{ runner.temp }}/flint/include/* ${{ runner.temp }}/symengine/include
           cp -r ${{ runner.temp }}/gmp/include/* ${{ runner.temp }}/symengine/include
           cp -r ${{ runner.temp }}/mpfr/include/* ${{ runner.temp }}/symengine/include
-          cp ${{ runner.temp }}/flint/lib/libflint.* ${{ runner.temp }}/symengine/lib
-          cp ${{ runner.temp }}/gmp/lib/libgmp.* ${{ runner.temp }}/symengine/lib
-          cp ${{ runner.temp }}/mpfr/lib/libmpfr.* ${{ runner.temp }}/symengine/lib
       - name: Patch SymEngine (Windows)
         if: runner.os == 'Windows'
         run: |
@@ -215,14 +212,14 @@ jobs:
       - name: Patch SymEngine (Linux/macOS/WASM)
         if: runner.os != 'Windows'
         run: |
-          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_ARB_LIBRARIES .*)|set(SYMENGINE_ARB_LIBRARIES ${SYMENGINE_FLINT_LIBRARIES})|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_ARB_INCLUDE_DIRS .*)|set(SYMENGINE_ARB_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_FLINT_LIBRARIES .*)|set(SYMENGINE_FLINT_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../libflint.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_FLINT_INCLUDE_DIRS .*)|set(SYMENGINE_FLINT_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_GMP_LIBRARIES .*)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../libgmp.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_GMP_INCLUDE_DIRS .*)|set(SYMENGINE_GMP_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_MPFR_LIBRARIES .*)|set(SYMENGINE_MPFR_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../libmpfr.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_MPFR_INCLUDE_DIRS .*)|set(SYMENGINE_MPFR_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} '/set(SYMENGINE_ARB_LIBRARIES .*)/d' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} '/set(SYMENGINE_ARB_INCLUDE_DIRS .*)/d' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} '/set(SYMENGINE_FLINT_LIBRARIES .*)/d' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} '/set(SYMENGINE_FLINT_INCLUDE_DIRS .*)/d' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} '/set(SYMENGINE_GMP_LIBRARIES .*)/d' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} '/set(SYMENGINE_GMP_INCLUDE_DIRS .*)/d' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} '/set(SYMENGINE_MPFR_LIBRARIES .*)/d' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} '/set(SYMENGINE_MPFR_INCLUDE_DIRS .*)/d' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
       - name: Archive SymEngine
         run: tar -czf ${{ runner.temp }}/symengine-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} symengine
       - name: Release zlib, libxml2, and SymEngine
