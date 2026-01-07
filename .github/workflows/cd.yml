@@ -1,4 +1,4 @@
-name: Library Cache Builder
+name: libCellML dependencies
 
 on:
   push:
@@ -25,10 +25,12 @@ jobs:
             os: macos-15-intel
             build_shared_libs: 'ON'
             archive_name: 'macOS-Intel'
+            sed_inplace_arg: "''"
           - name: 'macOS (ARM)'
             os: macos-latest
             build_shared_libs: 'ON'
             archive_name: 'macOS-ARM'
+            sed_inplace_arg: "''"
           - name: 'WASM'
             os: macos-latest
             emconfigure: 'emconfigure'
@@ -36,32 +38,27 @@ jobs:
             emmake: 'emmake'
             build_shared_libs: 'OFF'
             archive_name: 'WASM'
+            sed_inplace_arg: "''"
     env:
-      BUILDCACHE_ACCURACY: STRICT
-      BUILDCACHE_COMPRESS_FORMAT: ZSTD
-      BUILDCACHE_DEBUG: -1
-      BUILDCACHE_LOG_FILE: ""
+      FLINT_VERSION: 3.4.0
       GMP_VERSION: 6.3.0
       LIBXML2_VERSION: 2.9.10
+      MPFR_VERSION: 4.2.2
+      MACOSX_DEPLOYMENT_TARGET: 10.15
       SYMENGINE_VERSION: 0.14.0
+      VCPKG_VERSION: 2025.12.12
       ZLIB_VERSION: 1.2.12
     steps:
-      - name: Install CMake and Ninja
-        uses: lukka/get-cmake@latest
-      - name: Install buildcache
-        uses: opencor/buildcache-action@v1
-        with:
-          cache_key: ${{ matrix.name }}
       - name: Configure MSVC (Windows)
-        if: ${{ runner.os == 'Windows' }}
+        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
-      - name: Install Conan (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        uses: conan-io/setup-conan@v1
-        with:
-          cache_packages: true
+      - name: Setup Vcpkg (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          git clone -b ${{ env.VCPKG_VERSION }} --depth 1 https://github.com/microsoft/vcpkg.git
+          ./vcpkg/bootstrap-vcpkg
       - name: Install Emscripten (WASM)
-        if: ${{ matrix.name == 'WASM' }}
+        if: matrix.name == 'WASM'
         run: |
           brew update
           brew install --overwrite emscripten
@@ -70,7 +67,7 @@ jobs:
           git clone -b v${{ env.ZLIB_VERSION }} --depth 1 https://github.com/cmlibs-dependencies/zlib.git
           cd zlib
           python3 -c "with open('zutil.h') as f: content = f.read(); open('zutil.h', 'w').write('\n'.join(line for line in content.split('\n') if 'define fdopen(fd,mode) NULL' not in line))"
-          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/zlib -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/zlib -DCMAKE_OSX_DEPLOYMENT_TARGET=${{ env.MACOSX_DEPLOYMENT_TARGET }}
           cmake --build build
           cmake --install build
           tar -czf ${{ runner.temp }}/zlib-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} zlib
@@ -78,92 +75,157 @@ jobs:
         run: |
           git clone -b v${{ env.LIBXML2_VERSION }} --depth 1 https://github.com/cmlibs-dependencies/libxml2.git
           cd libxml2
-          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/libxml2 -DZLIB_DIR=${{ runner.temp }}/zlib/lib/cmake/ZLIB-${{ env.ZLIB_VERSION }} -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DLIBXML2_WITH_DEBUG=OFF -DLIBXML2_WITH_ICONV=OFF -DLIBXML2_WITH_LEGACY=OFF -DLIBXML2_WITH_LZMA=OFF -DLIBXML2_WITH_MODULES=OFF -DLIBXML2_WITH_PROGRAMS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_TESTS=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/libxml2 -DCMAKE_OSX_DEPLOYMENT_TARGET=${{ env.MACOSX_DEPLOYMENT_TARGET }} -DLIBXML2_WITH_DEBUG=OFF -DLIBXML2_WITH_ICONV=OFF -DLIBXML2_WITH_LEGACY=OFF -DLIBXML2_WITH_LZMA=OFF -DLIBXML2_WITH_MODULES=OFF -DLIBXML2_WITH_PROGRAMS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_TESTS=OFF -DZLIB_DIR=${{ runner.temp }}/zlib/lib/cmake/ZLIB-${{ env.ZLIB_VERSION }}
           cmake --build build
           cmake --install build
           tar -czf ${{ runner.temp }}/libxml2-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} libxml2
-      - name: Build and archive GMP (Linux/macOS/WASM)
-        if: ${{ runner.os != 'Windows' }}
+      - name: Cache Vcpkg packages (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg/installed
+            vcpkg/packages
+          key: ${{ matrix.archive_name }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
+          restore-keys: ${{ matrix.archive_name }}-vcpkg
+      - name: Install GMP, MPFR, and FLINT (Windows)
+        if: runner.os == 'Windows'
+        run: ./vcpkg/vcpkg install flint:x64-windows gmp:x64-windows mpfr:x64-windows
+      - name: Build GMP (Linux/macOS/WASM)
+        if: runner.os != 'Windows'
         run: |
-          curl -Lo gmp.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-${{ env.GMP_VERSION }}.tar.xz
+          curl -Lo gmp.tar.xz https://mirrors.kernel.org/gnu/gmp/gmp-${{ env.GMP_VERSION }}.tar.xz
           tar -xf gmp.tar.xz
           cd gmp-${{ env.GMP_VERSION }}
           ${{ matrix.emconfigure }} ./configure --prefix=${{ runner.temp }}/gmp --enable-cxx --disable-shared --disable-assembly HOST_CC=clang CFLAGS=-fPIC
           ${{ matrix.emmake }} make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
           ${{ matrix.emmake }} make install
-          tar -czf ${{ runner.temp }}/gmp-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} gmp
-      - name: Build and archive GMP and SymEngine (Windows)
-        if: ${{ runner.os == 'Windows' }}
+      - name: Build MPFR (Linux/macOS/WASM)
+        if: runner.os != 'Windows'
         run: |
-          conan profile detect --force
-          # Release builds.
-          conan install --requires=gmp/${{ env.GMP_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --output-folder="${{ runner.temp }}\gmp_cmake_release" -g CMakeDeps
-          conan install --requires=symengine/${{ env.SYMENGINE_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --output-folder="${{ runner.temp }}\symengine_cmake_release" -g CMakeDeps
-          conan install --requires=symengine/${{ env.SYMENGINE_VERSION }} --build=missing --settings=build_type=Release --options symengine/*:shared=True --deployer=full_deploy --deployer-folder="${{ runner.temp }}\symengine_full_deploy_release"
-          # Debug builds.
-          conan install --requires=gmp/${{ env.GMP_VERSION }} --build=missing --settings=build_type=Debug --options symengine/*:shared=True --output-folder="${{ runner.temp }}\gmp_cmake_debug" -g CMakeDeps
-          conan install --requires=symengine/${{ env.SYMENGINE_VERSION }} --build=missing --settings=build_type=Debug --options symengine/*:shared=True --output-folder="${{ runner.temp }}\symengine_cmake_debug" -g CMakeDeps
-          conan install --requires=symengine/${{ env.SYMENGINE_VERSION }} --build=missing --settings=build_type=Debug --options symengine/*:shared=True --deployer=full_deploy --deployer-folder="${{ runner.temp }}\symengine_full_deploy_debug"
-          # Package GMP (release).
-          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\gmp\Release"
-          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy_release\full_deploy\host\gmp\${{ env.GMP_VERSION }}\Release\x86_64\include" -Destination "${{ runner.temp }}\gmp\Release\include"
-          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy_release\full_deploy\host\gmp\${{ env.GMP_VERSION }}\Release\x86_64\lib" -Destination "${{ runner.temp }}\gmp\Release\lib"
-          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\gmp\Release\lib\cmake\gmp"
-          Copy-Item -Path "${{ runner.temp }}\gmp_cmake_release\*.cmake" -Destination "${{ runner.temp }}\gmp\Release\lib\cmake\gmp"
-          sed -i 's|set(gmp_PACKAGE_FOLDER_RELEASE ".*")|set(gmp_PACKAGE_FOLDER_RELEASE "${CMAKE_CURRENT_LIST_DIR}/../../..")|' ${{ runner.temp }}/gmp/Release/lib/cmake/gmp/gmp-release-x86_64-data.cmake
-          sed -i 's|set(gmp_LIBRARIES_RELEASE gmp::gmp)|set(gmp_LIBRARIES_RELEASE ${gmp_gmp_libgmp_LIB_DIRS_RELEASE}/gmp.lib)|' ${{ runner.temp }}/gmp/Release/lib/cmake/gmp/gmp-Target-release.cmake
-          # Package GMP (debug).
-          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\gmp\Debug"
-          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy_debug\full_deploy\host\gmp\${{ env.GMP_VERSION }}\Debug\x86_64\include" -Destination "${{ runner.temp }}\gmp\Debug\include"
-          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy_debug\full_deploy\host\gmp\${{ env.GMP_VERSION }}\Debug\x86_64\lib" -Destination "${{ runner.temp }}\gmp\Debug\lib"
-          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\gmp\Debug\lib\cmake\gmp"
-          Copy-Item -Path "${{ runner.temp }}\gmp_cmake_debug\*.cmake" -Destination "${{ runner.temp }}\gmp\Debug\lib\cmake\gmp"
-          sed -i 's|set(gmp_PACKAGE_FOLDER_DEBUG ".*")|set(gmp_PACKAGE_FOLDER_DEBUG "${CMAKE_CURRENT_LIST_DIR}/../../..")|' ${{ runner.temp }}/gmp/Debug/lib/cmake/gmp/gmp-debug-x86_64-data.cmake
-          sed -i 's|set(gmp_LIBRARIES_DEBUG gmp::gmp)|set(gmp_LIBRARIES_DEBUG ${gmp_gmp_libgmp_LIB_DIRS_DEBUG}/gmp.lib)|' ${{ runner.temp }}/gmp/Debug/lib/cmake/gmp/gmp-Target-debug.cmake
-          # Effectively package GMP.
-          tar -czf "${{ runner.temp }}/gmp-${{ matrix.archive_name }}.tar.gz" -C "${{ runner.temp }}" gmp
-          # Package SymEngine (release).
-          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\symengine\Release"
-          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy_release\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\bin" -Destination "${{ runner.temp }}\symengine\Release\bin"
-          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy_release\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\include" -Destination "${{ runner.temp }}\symengine\Release\include"
-          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy_release\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Release\x86_64\lib" -Destination "${{ runner.temp }}\symengine\Release\lib"
-          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\symengine\Release\lib\cmake\symengine"
-          Copy-Item -Path "${{ runner.temp }}\symengine_cmake_release\c*.cmake","${{ runner.temp }}\symengine_cmake_release\symengine*.cmake" -Destination "${{ runner.temp }}\symengine\Release\lib\cmake\symengine"
-          sed -i 's|set(symengine_PACKAGE_FOLDER_RELEASE ".*")|set(symengine_PACKAGE_FOLDER_RELEASE "${CMAKE_CURRENT_LIST_DIR}/../../..")|' ${{ runner.temp }}/symengine/Release/lib/cmake/symengine/symengine-release-x86_64-data.cmake
-          sed -i 's|set(symengine_LIBRARIES_RELEASE symengine)|set(symengine_LIBRARIES_RELEASE ${symengine_LIB_DIRS_RELEASE}/symengine.lib)|' ${{ runner.temp }}/symengine/Release/lib/cmake/symengine/symengine-Target-release.cmake
-          # Package SymEngine (debug).
-          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\symengine\Debug"
-          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy_debug\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Debug\x86_64\bin" -Destination "${{ runner.temp }}\symengine\Debug\bin"
-          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy_debug\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Debug\x86_64\include" -Destination "${{ runner.temp }}\symengine\Debug\include"
-          Copy-Item -Recurse -Path "${{ runner.temp }}\symengine_full_deploy_debug\full_deploy\host\symengine\${{ env.SYMENGINE_VERSION }}\Debug\x86_64\lib" -Destination "${{ runner.temp }}\symengine\Debug\lib"
-          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\symengine\Debug\lib\cmake\symengine"
-          Copy-Item -Path "${{ runner.temp }}\symengine_cmake_debug\c*.cmake","${{ runner.temp }}\symengine_cmake_debug\symengine*.cmake" -Destination "${{ runner.temp }}\symengine\Debug\lib\cmake\symengine"
-          sed -i 's|set(symengine_PACKAGE_FOLDER_DEBUG ".*")|set(symengine_PACKAGE_FOLDER_DEBUG "${CMAKE_CURRENT_LIST_DIR}/../../..")|' ${{ runner.temp }}/symengine/Debug/lib/cmake/symengine/symengine-debug-x86_64-data.cmake
-          sed -i 's|set(symengine_LIBRARIES_DEBUG symengine)|set(symengine_LIBRARIES_DEBUG ${symengine_LIB_DIRS_DEBUG}/symengine.lib)|' ${{ runner.temp }}/symengine/Debug/lib/cmake/symengine/symengine-Target-debug.cmake
-          # Effectively package SymEngine.
-          tar -czf "${{ runner.temp }}/symengine-${{ matrix.archive_name }}.tar.gz" -C "${{ runner.temp }}" symengine
-      - name: Build and archive SymEngine (Linux/macOS/WASM)
-        if: ${{ runner.os != 'Windows' }}
+          curl -Lo mpfr.tar.xz https://mirrors.kernel.org/gnu/mpfr/mpfr-${{ env.MPFR_VERSION }}.tar.xz
+          tar -xf mpfr.tar.xz
+          cd mpfr-${{ env.MPFR_VERSION }}
+          ${{ matrix.emconfigure }} ./configure --prefix=${{ runner.temp }}/mpfr --with-gmp=${{ runner.temp }}/gmp --disable-shared CFLAGS=-fPIC
+          ${{ matrix.emmake }} make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+          ${{ matrix.emmake }} make install
+      - name: Build FLINT (Linux/macOS/WASM)
+        if: runner.os != 'Windows'
         run: |
-          git clone -b v${{ env.SYMENGINE_VERSION }} --depth 1 https://github.com/symengine/symengine.git
-          cd symengine
-          ${{ matrix.emcmake }} cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine -DBUILD_BENCHMARKS=OFF -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} -DGMP_INCLUDE_DIR=${{ runner.temp }}/gmp/include -DGMP_LIBRARY=${{ runner.temp }}/gmp/lib/libgmp.a -DWITH_SYMENGINE_THREAD_SAFE=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+          curl -Lo flint.tar.gz https://flintlib.org/download/flint-${{ env.FLINT_VERSION }}.tar.gz
+          tar -xf flint.tar.gz
+          cd flint-${{ env.FLINT_VERSION }}
+          # Replace `as_fn_error $? "Cannot determine label suffix" "$LINENO" 5` with `true` in configure to avoid build failure with Emscripten.
+          sed -i ${{ matrix.sed_inplace_arg }} 's|as_fn_error \$\? "Cannot determine label suffix" "\$LINENO" 5|true|' configure
+          # Replace `#if FLINT_HAVE_getrusage` with `#if 0` in src/generic_files/profiler.c to avoid build failure with Emscripten.
+          sed -i ${{ matrix.sed_inplace_arg }} 's|#if FLINT_HAVE_getrusage|#if 0|' src/generic_files/profiler.c
+          ${{ matrix.emconfigure }} ./configure --prefix=${{ runner.temp }}/flint --with-gmp=${{ runner.temp }}/gmp --with-mpfr=${{ runner.temp }}/mpfr --disable-shared --disable-assembly --disable-debug CFLAGS=-fPIC
+          ${{ matrix.emmake }} make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+          ${{ matrix.emmake }} make install
+      - name: Clone SymEngine
+        run: git clone -b v${{ env.SYMENGINE_VERSION }} --depth 1 https://github.com/symengine/symengine.git
+      - name: Build SymEngine (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # Release version.
+          cmake -S symengine -B build-release `
+            -DBUILD_BENCHMARKS=OFF `
+            -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} `
+            -DBUILD_TESTS=OFF `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine/release `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake `
+            -DINTEGER_CLASS=flint `
+            -DWITH_SYMENGINE_RCP=ON `
+            -DWITH_FLINT=ON `
+            -DWITH_MPFR=ON
+          cmake --build build-release --config Release --parallel
+          cmake --install build-release --config Release
+          Copy-Item -Path "vcpkg/installed/x64-windows/include/*" -Destination "${{ runner.temp }}/symengine/release/include" -Recurse -Force
+          Copy-Item -Path "vcpkg/installed/x64-windows/bin/*.dll" -Destination "${{ runner.temp }}/symengine/release/bin" -Force
+          Copy-Item -Path "vcpkg/installed/x64-windows/lib/*.lib" -Destination "${{ runner.temp }}/symengine/release/lib" -Force
+          # Debug version.
+          cmake -S symengine -B build-debug `
+            -DBUILD_BENCHMARKS=OFF `
+            -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} `
+            -DBUILD_TESTS=OFF `
+            -DCMAKE_BUILD_TYPE=Debug `
+            -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine/debug `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDebug `
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake `
+            -DINTEGER_CLASS=flint `
+            -DWITH_SYMENGINE_RCP=ON `
+            -DWITH_FLINT=ON `
+            -DWITH_MPFR=ON
+          cmake --build build-debug --config Debug --parallel
+          cmake --install build-debug --config Debug
+          Copy-Item -Path "vcpkg/installed/x64-windows/include/*" -Destination "${{ runner.temp }}/symengine/debug/include" -Recurse -Force
+          Copy-Item -Path "vcpkg/installed/x64-windows/debug/bin/*.dll" -Destination "${{ runner.temp }}/symengine/debug/bin" -Force
+          Copy-Item -Path "vcpkg/installed/x64-windows/debug/lib/*.lib" -Destination "${{ runner.temp }}/symengine/debug/lib" -Force
+      - name: Build SymEngine (Linux/macOS/WASM)
+        if: runner.os != 'Windows'
+        run: |
+          ${{ matrix.emcmake }} cmake -G Ninja -S symengine -B build \
+            -DBUILD_BENCHMARKS=OFF \
+            -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} \
+            -DBUILD_TESTS=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=${{ env.MACOSX_DEPLOYMENT_TARGET }} \
+            -DFLINT_INCLUDE_DIR=${{ runner.temp }}/flint/include \
+            -DFLINT_LIBRARY=${{ runner.temp }}/flint/lib/libflint.a \
+            -DGMP_INCLUDE_DIR=${{ runner.temp }}/gmp/include \
+            -DGMP_LIBRARY=${{ runner.temp }}/gmp/lib/libgmp.a \
+            -DMPFR_INCLUDE_DIR=${{ runner.temp }}/mpfr/include \
+            -DMPFR_LIBRARY=${{ runner.temp }}/mpfr/lib/libmpfr.a \
+            -DINTEGER_CLASS=flint \
+            -DWITH_SYMENGINE_RCP=ON \
+            -DWITH_FLINT=ON \
+            -DWITH_MPFR=ON
           cmake --build build
           cmake --install build
-      - name: Patch SymEngine (Linux)
-        if: ${{ runner.os == 'Linux' }}
+          cp -r ${{ runner.temp }}/flint/include/* ${{ runner.temp }}/symengine/include
+          cp -r ${{ runner.temp }}/gmp/include/* ${{ runner.temp }}/symengine/include
+          cp -r ${{ runner.temp }}/mpfr/include/* ${{ runner.temp }}/symengine/include
+          cp ${{ runner.temp }}/flint/lib/libflint.* ${{ runner.temp }}/symengine/lib
+          cp ${{ runner.temp }}/gmp/lib/libgmp.* ${{ runner.temp }}/symengine/lib
+          cp ${{ runner.temp }}/mpfr/lib/libmpfr.* ${{ runner.temp }}/symengine/lib
+      - name: Patch SymEngine (Windows)
+        if: runner.os == 'Windows'
         run: |
-          sed -i 's|set(SYMENGINE_GMP_LIBRARIES /home/runner/work/_temp/gmp/lib/libgmp.a)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../../../gmp/lib/libgmp.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_GMP_INCLUDE_DIRS /home/runner/work/_temp/gmp/include)|set(SYMENGINE_GMP_INCLUDE_DIRS ${SYMENGINE_CMAKE_DIR}/../../../../gmp/include)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-      - name: Patch SymEngine (macOS/WASM)
-        if: ${{ runner.os == 'macOS' }}
+          # Release version.
+          sed -i 's|set(SYMENGINE_ARB_LIBRARIES .*)|set(SYMENGINE_ARB_LIBRARIES ${SYMENGINE_FLINT_LIBRARIES})|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_ARB_INCLUDE_DIRS .*)|set(SYMENGINE_ARB_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_FLINT_LIBRARIES .*)|set(SYMENGINE_FLINT_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/flint.lib)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_FLINT_INCLUDE_DIRS .*)|set(SYMENGINE_FLINT_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_GMP_LIBRARIES .*)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/gmp.lib)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_GMP_INCLUDE_DIRS .*)|set(SYMENGINE_GMP_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_MPFR_LIBRARIES .*)|set(SYMENGINE_MPFR_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/mpfr.lib)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_MPFR_INCLUDE_DIRS .*)|set(SYMENGINE_MPFR_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
+          # Debug version.
+          sed -i 's|set(SYMENGINE_ARB_LIBRARIES .*)|set(SYMENGINE_ARB_LIBRARIES ${SYMENGINE_FLINT_LIBRARIES})|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_ARB_INCLUDE_DIRS .*)|set(SYMENGINE_ARB_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_FLINT_LIBRARIES .*)|set(SYMENGINE_FLINT_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/flint.lib)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_FLINT_INCLUDE_DIRS .*)|set(SYMENGINE_FLINT_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_GMP_LIBRARIES .*)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/gmp.lib)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_GMP_INCLUDE_DIRS .*)|set(SYMENGINE_GMP_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_MPFR_LIBRARIES .*)|set(SYMENGINE_MPFR_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/mpfr.lib)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
+          sed -i 's|set(SYMENGINE_MPFR_INCLUDE_DIRS .*)|set(SYMENGINE_MPFR_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
+      - name: Patch SymEngine (Linux/macOS/WASM)
+        if: runner.os != 'Windows'
         run: |
-          sed -i '' 's|set(SYMENGINE_GMP_LIBRARIES /Users/runner/work/_temp/gmp/lib/libgmp.a)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../../../gmp/lib/libgmp.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-          sed -i '' 's|set(SYMENGINE_GMP_INCLUDE_DIRS /Users/runner/work/_temp/gmp/include)|set(SYMENGINE_GMP_INCLUDE_DIRS ${SYMENGINE_CMAKE_DIR}/../../../../gmp/include)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
-      - name: Archive SymEngine (Linux/macOS/WASM)
-        if: ${{ runner.os != 'Windows' }}
+          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_ARB_LIBRARIES .*)|set(SYMENGINE_ARB_LIBRARIES ${SYMENGINE_FLINT_LIBRARIES})|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_ARB_INCLUDE_DIRS .*)|set(SYMENGINE_ARB_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_FLINT_LIBRARIES .*)|set(SYMENGINE_FLINT_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../libflint.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_FLINT_INCLUDE_DIRS .*)|set(SYMENGINE_FLINT_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_GMP_LIBRARIES .*)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../libgmp.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_GMP_INCLUDE_DIRS .*)|set(SYMENGINE_GMP_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_MPFR_LIBRARIES .*)|set(SYMENGINE_MPFR_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../../libmpfr.a)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+          sed -i ${{ matrix.sed_inplace_arg }} 's|set(SYMENGINE_MPFR_INCLUDE_DIRS .*)|set(SYMENGINE_MPFR_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+      - name: Archive SymEngine
         run: tar -czf ${{ runner.temp }}/symengine-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} symengine
-      - name: Release zlib, libxml2, GMP, and SymEngine
+      - name: Release zlib, libxml2, and SymEngine
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ runner.temp }}/*.tar.gz
