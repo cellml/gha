@@ -13,31 +13,31 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: 'Windows'
+          - name: Windows
             os: windows-latest
-            build_shared_libs: 'ON'
-            archive_name: 'Windows'
-          - name: 'Linux'
+            build_shared_libs: ON
+            archive_name: Windows
+          - name: Linux
             os: ubuntu-latest
-            build_shared_libs: 'ON'
-            archive_name: 'Linux'
+            build_shared_libs: ON
+            archive_name: Linux
           - name: 'macOS (Intel)'
             os: macos-15-intel
-            build_shared_libs: 'ON'
-            archive_name: 'macOS-Intel'
+            build_shared_libs: ON
+            archive_name: macOS-Intel
             sed_inplace_arg: "''"
           - name: 'macOS (ARM)'
             os: macos-latest
-            build_shared_libs: 'ON'
-            archive_name: 'macOS-ARM'
+            build_shared_libs: ON
+            archive_name: macOS-ARM
             sed_inplace_arg: "''"
-          - name: 'WASM'
+          - name: WASM
             os: macos-latest
-            emconfigure: 'emconfigure'
-            emcmake: 'emcmake'
-            emmake: 'emmake'
-            build_shared_libs: 'OFF'
-            archive_name: 'WASM'
+            emconfigure: emconfigure
+            emcmake: emcmake
+            emmake: emmake
+            build_shared_libs: OFF
+            archive_name: WASM
             sed_inplace_arg: "''"
     env:
       FLINT_VERSION: 3.4.0
@@ -90,7 +90,7 @@ jobs:
           restore-keys: ${{ matrix.archive_name }}-vcpkg
       - name: Install GMP, MPFR, and FLINT (Windows)
         if: runner.os == 'Windows'
-        run: ./vcpkg/vcpkg install flint:x64-windows gmp:x64-windows mpfr:x64-windows
+        run: ./vcpkg/vcpkg install gmp mpfr flint --triplet=x64-windows
       - name: Build GMP (Linux/macOS/WASM)
         if: runner.os != 'Windows'
         run: |
@@ -127,44 +127,53 @@ jobs:
       - name: Build SymEngine (Windows)
         if: runner.os == 'Windows'
         run: |
-          # Release version.
-          cmake -S symengine -B build-release `
-            -DBUILD_BENCHMARKS=OFF `
-            -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} `
-            -DBUILD_TESTS=OFF `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine/release `
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
-            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake `
-            -DINTEGER_CLASS=flint `
-            -DMSVC_USE_MT=OFF `
-            -DWITH_SYMENGINE_RCP=ON `
-            -DWITH_FLINT=ON `
-            -DWITH_MPFR=ON
-          cmake --build build-release --config Release --parallel
-          cmake --install build-release --config Release
-          Copy-Item -Path "vcpkg/installed/x64-windows/include/*" -Destination "${{ runner.temp }}/symengine/release/include" -Recurse -Force
-          Copy-Item -Path "vcpkg/installed/x64-windows/bin/*.dll" -Destination "${{ runner.temp }}/symengine/release/bin" -Force
-          Copy-Item -Path "vcpkg/installed/x64-windows/lib/*.lib" -Destination "${{ runner.temp }}/symengine/release/lib" -Force
-          # Debug version.
-          cmake -S symengine -B build-debug `
-            -DBUILD_BENCHMARKS=OFF `
-            -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} `
-            -DBUILD_TESTS=OFF `
-            -DCMAKE_BUILD_TYPE=Debug `
-            -DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine/debug `
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDebug `
-            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake `
-            -DINTEGER_CLASS=flint `
-            -DMSVC_USE_MT=OFF `
-            -DWITH_SYMENGINE_RCP=ON `
-            -DWITH_FLINT=ON `
-            -DWITH_MPFR=ON
-          cmake --build build-debug --config Debug --parallel
-          cmake --install build-debug --config Debug
-          Copy-Item -Path "vcpkg/installed/x64-windows/include/*" -Destination "${{ runner.temp }}/symengine/debug/include" -Recurse -Force
-          Copy-Item -Path "vcpkg/installed/x64-windows/debug/bin/*.dll" -Destination "${{ runner.temp }}/symengine/debug/bin" -Force
-          Copy-Item -Path "vcpkg/installed/x64-windows/debug/lib/*.lib" -Destination "${{ runner.temp }}/symengine/debug/lib" -Force
+          function Build-SymEngine {
+            param (
+              [string]$Config
+            )
+
+            $cmakeArgs = @(
+              "-S", "symengine"
+              "-G", "Ninja"
+              "-B", "build-$Config"
+              "-DBUILD_BENCHMARKS=OFF"
+              "-DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }}"
+              "-DBUILD_TESTS=OFF"
+              "-DCMAKE_BUILD_TYPE=$Config"
+              "-DCMAKE_INSTALL_PREFIX=${{ runner.temp }}/symengine/$Config"
+              "-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+              "-DINTEGER_CLASS=flint"
+              "-DMSVC_USE_MT=OFF"
+              "-DWITH_SYMENGINE_RCP=ON"
+              "-DWITH_FLINT=ON"
+              "-DWITH_MPFR=ON"
+            )
+            cmake @cmakeArgs
+            cmake --build build-$Config
+            cmake --install build-$Config
+
+            $Source = "vcpkg/installed/x64-windows"
+            $SourceConfig = if ($Config -eq "release") { $Source } else { "$Source/debug" }
+            $Destination = "${{ runner.temp }}/symengine/$Config"
+
+            Copy-Item -Path "$Source/include/flint" -Destination "$Destination/include/flint" -Recurse -Force
+            Copy-Item -Path "$Source/include/_ptw32.h" -Destination "$Destination/include/_ptw32.h" -Force
+            Copy-Item -Path "$Source/include/gmp.h" -Destination "$Destination/include/gmp.h" -Force
+            Copy-Item -Path "$Source/include/mpfr.h" -Destination "$Destination/include/mpfr.h" -Force
+            Copy-Item -Path "$Source/include/pthread.h" -Destination "$Destination/include/pthread.h" -Force
+            Copy-Item -Path "$Source/include/sched.h" -Destination "$Destination/include/sched.h" -Force
+            Copy-Item -Path "$SourceConfig/bin/flint*.dll" -Destination "$Destination/bin" -Force
+            Copy-Item -Path "$SourceConfig/bin/gmp*.dll" -Destination "$Destination/bin" -Force
+            Copy-Item -Path "$SourceConfig/bin/mpfr*.dll" -Destination "$Destination/bin" -Force
+            Copy-Item -Path "$SourceConfig/bin/pthreadVC3*.dll" -Destination "$Destination/bin" -Force
+            Copy-Item -Path "$SourceConfig/lib/flint.lib" -Destination "$Destination/lib" -Force
+            Copy-Item -Path "$SourceConfig/lib/gmp.lib" -Destination "$Destination/lib" -Force
+            Copy-Item -Path "$SourceConfig/lib/mpfr.lib" -Destination "$Destination/lib" -Force
+            Copy-Item -Path "$SourceConfig/lib/pthreadVC3*.lib" -Destination "$Destination/lib" -Force
+          }
+
+          Build-SymEngine -config "Release"
+          Build-SymEngine -config "Debug"
       - name: Build SymEngine (Linux/macOS/WASM)
         if: runner.os != 'Windows'
         run: |
@@ -193,24 +202,23 @@ jobs:
       - name: Patch SymEngine (Windows)
         if: runner.os == 'Windows'
         run: |
-          # Release version.
-          sed -i 's|set(SYMENGINE_ARB_LIBRARIES .*)|set(SYMENGINE_ARB_LIBRARIES ${SYMENGINE_FLINT_LIBRARIES})|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_ARB_INCLUDE_DIRS .*)|set(SYMENGINE_ARB_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_FLINT_LIBRARIES .*)|set(SYMENGINE_FLINT_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/flint.lib)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_FLINT_INCLUDE_DIRS .*)|set(SYMENGINE_FLINT_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_GMP_LIBRARIES .*)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/gmp.lib)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_GMP_INCLUDE_DIRS .*)|set(SYMENGINE_GMP_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_MPFR_LIBRARIES .*)|set(SYMENGINE_MPFR_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/mpfr.lib)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_MPFR_INCLUDE_DIRS .*)|set(SYMENGINE_MPFR_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/release/Cmake/SymEngineConfig.cmake
-          # Debug version.
-          sed -i 's|set(SYMENGINE_ARB_LIBRARIES .*)|set(SYMENGINE_ARB_LIBRARIES ${SYMENGINE_FLINT_LIBRARIES})|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_ARB_INCLUDE_DIRS .*)|set(SYMENGINE_ARB_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_FLINT_LIBRARIES .*)|set(SYMENGINE_FLINT_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/flint.lib)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_FLINT_INCLUDE_DIRS .*)|set(SYMENGINE_FLINT_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_GMP_LIBRARIES .*)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/gmp.lib)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_GMP_INCLUDE_DIRS .*)|set(SYMENGINE_GMP_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_MPFR_LIBRARIES .*)|set(SYMENGINE_MPFR_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/mpfr.lib)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
-          sed -i 's|set(SYMENGINE_MPFR_INCLUDE_DIRS .*)|set(SYMENGINE_MPFR_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/debug/Cmake/SymEngineConfig.cmake
+          function Patch-SymEngine {
+            param (
+              [string]$Config
+            )
+
+            sed -i 's|set(SYMENGINE_ARB_LIBRARIES .*)|set(SYMENGINE_ARB_LIBRARIES ${SYMENGINE_FLINT_LIBRARIES})|' ${{ runner.temp }}/symengine/$Config/Cmake/SymEngineConfig.cmake
+            sed -i 's|set(SYMENGINE_ARB_INCLUDE_DIRS .*)|set(SYMENGINE_ARB_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/$Config/Cmake/SymEngineConfig.cmake
+            sed -i 's|set(SYMENGINE_FLINT_LIBRARIES .*)|set(SYMENGINE_FLINT_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/flint.lib)|' ${{ runner.temp }}/symengine/$Config/Cmake/SymEngineConfig.cmake
+            sed -i 's|set(SYMENGINE_FLINT_INCLUDE_DIRS .*)|set(SYMENGINE_FLINT_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/$Config/Cmake/SymEngineConfig.cmake
+            sed -i 's|set(SYMENGINE_GMP_LIBRARIES .*)|set(SYMENGINE_GMP_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/gmp.lib)|' ${{ runner.temp }}/symengine/$Config/Cmake/SymEngineConfig.cmake
+            sed -i 's|set(SYMENGINE_GMP_INCLUDE_DIRS .*)|set(SYMENGINE_GMP_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/$Config/Cmake/SymEngineConfig.cmake
+            sed -i 's|set(SYMENGINE_MPFR_LIBRARIES .*)|set(SYMENGINE_MPFR_LIBRARIES ${SYMENGINE_CMAKE_DIR}/../lib/mpfr.lib)|' ${{ runner.temp }}/symengine/$Config/Cmake/SymEngineConfig.cmake
+            sed -i 's|set(SYMENGINE_MPFR_INCLUDE_DIRS .*)|set(SYMENGINE_MPFR_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/$Config/Cmake/SymEngineConfig.cmake
+          }
+
+          Patch-SymEngine -config "Release"
+          Patch-SymEngine -config "Debug"
       - name: Patch SymEngine (Linux/macOS/WASM)
         if: runner.os != 'Windows'
         run: |
