@@ -153,7 +153,7 @@ jobs:
             cmake --install build-$Config
 
             $Source = "vcpkg/installed/x64-windows"
-            $SourceConfig = if ($Config -eq "release") { $Source } else { "$Source/debug" }
+            $SourceConfig = if ($Config -eq "Release") { $Source } else { "$Source/debug" }
             $Destination = "${{ runner.temp }}/symengine/$Config"
 
             Copy-Item -Path "$Source/include/flint" -Destination "$Destination/include/flint" -Recurse -Force
@@ -162,18 +162,20 @@ jobs:
             Copy-Item -Path "$Source/include/mpfr.h" -Destination "$Destination/include/mpfr.h" -Force
             Copy-Item -Path "$Source/include/pthread.h" -Destination "$Destination/include/pthread.h" -Force
             Copy-Item -Path "$Source/include/sched.h" -Destination "$Destination/include/sched.h" -Force
-            Copy-Item -Path "$SourceConfig/bin/flint*.dll" -Destination "$Destination/bin" -Force
-            Copy-Item -Path "$SourceConfig/bin/gmp*.dll" -Destination "$Destination/bin" -Force
-            Copy-Item -Path "$SourceConfig/bin/mpfr*.dll" -Destination "$Destination/bin" -Force
+
+            Copy-Item -Path "$SourceConfig/bin/flint-*.dll" -Destination "$Destination/bin" -Force
+            Copy-Item -Path "$SourceConfig/bin/gmp-*.dll" -Destination "$Destination/bin" -Force
+            Copy-Item -Path "$SourceConfig/bin/mpfr-*.dll" -Destination "$Destination/bin" -Force
             Copy-Item -Path "$SourceConfig/bin/pthreadVC3*.dll" -Destination "$Destination/bin" -Force
+
             Copy-Item -Path "$SourceConfig/lib/flint.lib" -Destination "$Destination/lib" -Force
             Copy-Item -Path "$SourceConfig/lib/gmp.lib" -Destination "$Destination/lib" -Force
             Copy-Item -Path "$SourceConfig/lib/mpfr.lib" -Destination "$Destination/lib" -Force
             Copy-Item -Path "$SourceConfig/lib/pthreadVC3*.lib" -Destination "$Destination/lib" -Force
           }
 
-          Build-SymEngine -config "Release"
-          Build-SymEngine -config "Debug"
+          Build-SymEngine -Config "Release"
+          Build-SymEngine -Config "Debug"
       - name: Build SymEngine (Linux/macOS/WASM)
         if: runner.os != 'Windows'
         run: |
@@ -217,8 +219,8 @@ jobs:
             sed -i 's|set(SYMENGINE_MPFR_INCLUDE_DIRS .*)|set(SYMENGINE_MPFR_INCLUDE_DIRS)|' ${{ runner.temp }}/symengine/$Config/Cmake/SymEngineConfig.cmake
           }
 
-          Patch-SymEngine -config "Release"
-          Patch-SymEngine -config "Debug"
+          Patch-SymEngine -Config "Release"
+          Patch-SymEngine -Config "Debug"
       - name: Patch SymEngine (Linux/macOS/WASM)
         if: runner.os != 'Windows'
         run: |
