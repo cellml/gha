@@ -137,6 +137,7 @@ jobs:
             -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
             -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake `
             -DINTEGER_CLASS=flint `
+            -DMSVC_USE_MT=OFF `
             -DWITH_SYMENGINE_RCP=ON `
             -DWITH_FLINT=ON `
             -DWITH_MPFR=ON
@@ -155,6 +156,7 @@ jobs:
             -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDebug `
             -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake `
             -DINTEGER_CLASS=flint `
+            -DMSVC_USE_MT=OFF `
             -DWITH_SYMENGINE_RCP=ON `
             -DWITH_FLINT=ON `
             -DWITH_MPFR=ON
