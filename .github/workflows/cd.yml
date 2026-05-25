@@ -13,26 +13,38 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows
-            os: windows-latest
+          - name: Windows (Intel)
+            os: windows-2022
+            arch: amd64
+            vcpkg_triplet: x64-windows
             build_shared_libs: ON
-            archive_name: Windows
-          - name: Linux
-            os: ubuntu-latest
+            archive_name: Windows-Intel
+          - name: Windows (ARM)
+            os: windows-11-arm
+            arch: amd64_arm64
+            vcpkg_triplet: arm64-windows
             build_shared_libs: ON
-            archive_name: Linux
+            archive_name: Windows-ARM
+          - name: Linux (Intel)
+            os: ubuntu-24.04
+            build_shared_libs: ON
+            archive_name: Linux-Intel
+          - name: Linux (ARM)
+            os: ubuntu-24.04-arm
+            build_shared_libs: ON
+            archive_name: Linux-ARM
           - name: 'macOS (Intel)'
             os: macos-15-intel
             build_shared_libs: ON
             archive_name: macOS-Intel
             sed_inplace_arg: "''"
           - name: 'macOS (ARM)'
-            os: macos-latest
+            os: macos-15
             build_shared_libs: ON
             archive_name: macOS-ARM
             sed_inplace_arg: "''"
           - name: WASM
-            os: macos-latest
+            os: macos-15
             emconfigure: emconfigure
             emcmake: emcmake
             emmake: emmake
@@ -52,6 +64,8 @@ jobs:
       - name: Configure MSVC (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
       - name: Setup Vcpkg (Windows)
         if: runner.os == 'Windows'
         run: |
@@ -90,7 +104,7 @@ jobs:
           restore-keys: ${{ matrix.archive_name }}-vcpkg
       - name: Install GMP, MPFR, and FLINT (Windows)
         if: runner.os == 'Windows'
-        run: ./vcpkg/vcpkg install gmp mpfr flint --triplet=x64-windows
+        run: ./vcpkg/vcpkg install gmp mpfr flint --triplet=${{ matrix.vcpkg_triplet }}
       - name: Build GMP (Linux/macOS/WASM)
         if: runner.os != 'Windows'
         run: |
@@ -152,7 +166,7 @@ jobs:
             cmake --build build-$Config
             cmake --install build-$Config
 
-            $Source = "vcpkg/installed/x64-windows"
+            $Source = "vcpkg/installed/${{ matrix.vcpkg_triplet }}"
             $SourceConfig = if ($Config -eq "Release") { $Source } else { "$Source/debug" }
             $Destination = "${{ runner.temp }}/symengine/$Config"
 
