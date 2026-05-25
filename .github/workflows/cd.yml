@@ -40,7 +40,7 @@ jobs:
             archive_name: WASM
             sed_inplace_arg: "''"
     env:
-      FLINT_VERSION: 3.4.0
+      FLINT_VERSION: 3.5.0
       GMP_VERSION: 6.3.0
       LIBXML2_VERSION: 2.9.10
       MPFR_VERSION: 4.2.2
