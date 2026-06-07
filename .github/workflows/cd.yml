@@ -246,6 +246,12 @@ jobs:
           sed -i ${{ matrix.sed_inplace_arg }} '/set(SYMENGINE_GMP_INCLUDE_DIRS .*)/d' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
           sed -i ${{ matrix.sed_inplace_arg }} '/set(SYMENGINE_MPFR_LIBRARIES .*)/d' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
           sed -i ${{ matrix.sed_inplace_arg }} '/set(SYMENGINE_MPFR_INCLUDE_DIRS .*)/d' ${{ runner.temp }}/symengine/lib/cmake/symengine/SymEngineConfig.cmake
+      - name: Archive GMP, MPRF, and FLINT (WASM)
+        if: matrix.name == 'WASM'
+        run: |
+          tar -czf ${{ runner.temp }}/gmp-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} gmp
+          tar -czf ${{ runner.temp }}/mpfr-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} mpfr
+          tar -czf ${{ runner.temp }}/flint-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} flint
       - name: Archive SymEngine
         run: tar -czf ${{ runner.temp }}/symengine-${{ matrix.archive_name }}.tar.gz -C ${{ runner.temp }} symengine
       - name: Release zlib, libxml2, and SymEngine
