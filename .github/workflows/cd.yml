@@ -188,6 +188,8 @@ jobs:
             Copy-Item -Path "$SourceConfig/lib/pthreadVC3*.lib" -Destination "$Destination/lib" -Force
           }
 
+          sed -i ${{ matrix.sed_inplace_arg }} 's|set(WITH_SYMENGINE_ASSERT yes)|# set(WITH_SYMENGINE_ASSERT yes)|' symengine/CMakeLists.txt
+
           Build-SymEngine -Config "Release"
           Build-SymEngine -Config "Debug"
       - name: Build SymEngine (Linux/macOS/WASM)
